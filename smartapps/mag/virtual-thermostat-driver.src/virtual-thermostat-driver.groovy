@@ -20,8 +20,8 @@ definition(
     namespace: "mag",
     author: "SmartThings",
     description: """Control a space heater or window air conditioner in conjunction with any temperature sensor, like a SmartSense Multi.
-    				|This version takes its input (mode, setpoint, etc) from a Simulated Thermostat instance.
-                    |This way it can be updated convinently via the app, or other automatition, like Amazon Echo / Alexa.""".stripMargin(),
+    				This version takes its input (mode, setpoint, etc) from a Simulated Thermostat instance.
+                    This way it can be updated convinently via the app, or other automatition, like Amazon Echo / Alexa.""".stripIndent(),
     category: "Green Living",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch@2x.png"
@@ -62,7 +62,7 @@ def updated()
 
 def temperatureHandler(evt)
 {
-	thremo.setTemperature(evt.doubleValue)
+	thermo.setTemperature(evt.doubleValue)
 	evaluateWithMotion(evt.doubleValue)
 }
 
@@ -78,14 +78,14 @@ def motionHandler(evt)
 	}
 }
 
-def getSetpoint() {
+private getSetpoint() {
 	def mode = thermo.currentThermostatMode 
 	if (mode == "cool") return thermo.currentCoolingSetpoint
 	if (mode == "heat") return thermo.currentHeatingSetpoint
     return thermo.currentTemperature
 }
 
-def evaluateWithMotion(currentTemp)
+private evaluateWithMotion(currentTemp)
 {
 	if (!hasBeenRecentMotion()) {
         setSwitchState(false)
@@ -102,9 +102,11 @@ private evaluate(currentTemp)
     def delta = 0
 	if (thermo.currentThermostatMode == "cool") {
     	delta = currentTemp - setpoint
-	} else {
+	} else if (thermo.currentThermostatMode == "heat") {
     	delta = setpoint - currentTemp
-	}
+	} else {
+    	return
+    }
     setSwitchState(delta > 0)
 }
 
