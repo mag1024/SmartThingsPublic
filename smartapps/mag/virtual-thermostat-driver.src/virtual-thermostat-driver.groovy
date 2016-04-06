@@ -37,7 +37,7 @@ preferences {
 	section("Select the heater or air conditioner outlet(s)... "){
 		input "outlets", "capability.switch", title: "Outlets", multiple: true
 	}
-	section("When there's been movement from (optional, leave blank to not require motion)..."){
+	section("When there's been movement from (optional)..."){
 		input "motion", "capability.motionSensor", title: "Motion", required: false
 	}
 	section("Within this number of minutes..."){
@@ -45,37 +45,41 @@ preferences {
 	}
 }
 
-def installed()
-{
+def installed() {
 	subscribe(sensor, "temperature", temperatureHandler)
+    subscribe(location, modeHandler)
 	if (motion) {
 		subscribe(motion, "motion", motionHandler)
 	}
+    state.appVersion = "1.0-3"
+    state.modeChange = now()
     setSwitchState(false)
 }
 
-def updated()
-{
+def updated() {
 	unsubscribe()
 	installed()
 }
 
-def temperatureHandler(evt)
-{
+def temperatureHandler(evt) {
 	thermo.setTemperature(evt.doubleValue)
 	evaluateWithMotion(evt.doubleValue)
 }
 
-def motionHandler(evt)
-{
+def motionHandler(evt) {
     def lastTemp = sensor.currentTemperature
-    if (lastTemp == null) return
-    
 	if (evt.value == "active") {
 		evaluate(lastTemp)
 	} else if (evt.value == "inactive") {
     	evaluateWithMotion(lastTemp)
 	}
+}
+
+def modeHandler(evt) {
+	log.debug "modeChangeHandler($evt.value)"
+    if (evt.value != "Home") return
+    state.modeChange = now()
+    evaluate(sensor.currentTemperature)
 }
 
 private getSetpoint() {
@@ -85,8 +89,7 @@ private getSetpoint() {
     return thermo.currentTemperature
 }
 
-private evaluateWithMotion(currentTemp)
-{
+private evaluateWithMotion(currentTemp) {
 	if (!hasBeenRecentMotion()) {
         setSwitchState(false)
         return;
@@ -95,8 +98,7 @@ private evaluateWithMotion(currentTemp)
 	evaluate(currentTemp)
 }
 
-private evaluate(currentTemp)
-{
+private evaluate(currentTemp) {
 	def setpoint = getSetpoint()
 	log.debug "EVALUATE($currentTemp, $setpoint)"
     def delta = 0
@@ -110,22 +112,21 @@ private evaluate(currentTemp)
     setSwitchState(delta > 0)
 }
 
-private setSwitchState(onoff)
-{
+private setSwitchState(onoff) {
     if (onoff) {
         outlets.on()
     } else {
         outlets.off()
     }
-    state.lastState = onoff
 }
 
-private hasBeenRecentMotion()
-{
+private hasBeenRecentMotion() {
 	if (!motion || !minutes) return true
     
-    def deltaMinutes = minutes as Long
-    def motionEvents = motion.eventsSince(new Date(now() - (60000 * deltaMinutes)))
-    log.trace "Found ${motionEvents?.size() ?: 0} events in the last $deltaMinutes minutes"
+    def horizon = now() - timeOffset(minutes) as Long
+    if (state.modeChange > horizon) return true
+    
+    def motionEvents = motion.eventsSince(new Date(horizon))
+    log.trace "Found ${motionEvents?.size() ?: 0} events since $horizon"
     return motionEvents.find { it.value == "active" }
 }
