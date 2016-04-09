@@ -1,5 +1,5 @@
 /**
- *  Copyright 2015 SmartThings
+ *  Copyright 2016 Michael G
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -9,16 +9,12 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
- *
- *  Forked from (and heavily modifed) Virtual Thermostat by SmartThings
- * 	Author: Michael G
- *
  */
  
 definition(
     name: "Virtual Thermostat Driver",
     namespace: "mag",
-    author: "SmartThings",
+    author: "Michael G",
     description: """Control a space heater or window air conditioner in conjunction with any temperature sensor, like a SmartSense Multi.
     				This version takes its input (mode, setpoint, etc) from a Simulated Thermostat instance.
                     This way it can be updated convinently via the app, or other automatition, like Amazon Echo / Alexa.""".stripIndent(),
@@ -47,13 +43,13 @@ preferences {
 
 def installed() {
 	subscribe(sensor, "temperature", temperatureHandler)
+	subscribe(thermo, "thermostatOperatingState", opStateHandler)
     subscribe(location, modeHandler)
 	if (motion) {
 		subscribe(motion, "motion", motionHandler)
 	}
-    state.appVersion = "1.0-3"
-    state.modeChange = now()
-    setSwitchState(false)
+    state.appVersion = "1.1-1"
+    state.lastActivity = now()
 }
 
 def updated() {
@@ -63,70 +59,32 @@ def updated() {
 
 def temperatureHandler(evt) {
 	thermo.setTemperature(evt.doubleValue)
-	evaluateWithMotion(evt.doubleValue)
+	evaluate("temp")
+}
+
+def opStateHandler(evt) {
+	evaluate("opState")
 }
 
 def motionHandler(evt) {
-    def lastTemp = sensor.currentTemperature
-	if (evt.value == "active") {
-		evaluate(lastTemp)
-	} else if (evt.value == "inactive") {
-    	evaluateWithMotion(lastTemp)
-	}
+	if (evt.value == "active") state.lastActivity = now()
+    evaluate("motion")
 }
 
 def modeHandler(evt) {
-	log.debug "modeChangeHandler($evt.value)"
-    if (evt.value != "Home") return
-    state.modeChange = now()
-    evaluate(sensor.currentTemperature)
+    if (evt.value == "Home") state.lastActivity = now()
+    evaluate("mode")
 }
 
-private getSetpoint() {
-	def mode = thermo.currentThermostatMode 
-	if (mode == "cool") return thermo.currentCoolingSetpoint
-	if (mode == "heat") return thermo.currentHeatingSetpoint
-    return thermo.currentTemperature
+private evaluate(trace) {
+	def thermoState = thermo.currentThermostatOperatingState in ["cooling", "heating"]
+    def activity = hadRecentActivity()
+	log.debug "$trace: thermo = $thermoState, activity = $activity"
+    thermoState && activity ? outlets.on() : outlets.off()
 }
 
-private evaluateWithMotion(currentTemp) {
-	if (!hasBeenRecentMotion()) {
-        setSwitchState(false)
-        return;
-    }
-    
-	evaluate(currentTemp)
-}
-
-private evaluate(currentTemp) {
-	def setpoint = getSetpoint()
-	log.debug "EVALUATE($currentTemp, $setpoint)"
-    def delta = 0
-	if (thermo.currentThermostatMode == "cool") {
-    	delta = currentTemp - setpoint
-	} else if (thermo.currentThermostatMode == "heat") {
-    	delta = setpoint - currentTemp
-	} else {
-    	return
-    }
-    setSwitchState(delta > 0)
-}
-
-private setSwitchState(onoff) {
-    if (onoff) {
-        outlets.on()
-    } else {
-        outlets.off()
-    }
-}
-
-private hasBeenRecentMotion() {
+private hadRecentActivity() {
 	if (!motion || !minutes) return true
-    
     def horizon = now() - timeOffset(minutes) as Long
-    if (state.modeChange > horizon) return true
-    
-    def motionEvents = motion.eventsSince(new Date(horizon))
-    log.trace "Found ${motionEvents?.size() ?: 0} events since $horizon"
-    return motionEvents.find { it.value == "active" }
+    return state.lastActivity > horizon
 }
