@@ -43,7 +43,7 @@ preferences {
 
 def installed() {
 	subscribe(sensor, "temperature", temperatureHandler)
-	subscribe(thermo, "thermostatOperatingState", opStateHandler)
+	subscribe(thermo, "thermostat", thermoHandler)
     subscribe(location, modeHandler)
 	if (motion) {
 		subscribe(motion, "motion", motionHandler)
@@ -62,8 +62,8 @@ def temperatureHandler(evt) {
 	evaluate("temp")
 }
 
-def opStateHandler(evt) {
-	evaluate("opState")
+def thermoHandler(evt) {
+	evaluate("thermo:" + evt.value)
 }
 
 def motionHandler(evt) {
@@ -77,10 +77,15 @@ def modeHandler(evt) {
 }
 
 private evaluate(trace) {
-	def thermoState = thermo.currentThermostatOperatingState in ["cooling", "heating"]
+	def thermoState = thermo.currentThermostatOperatingState
+	def thermoMode = thermo.currentThermostatMode
     def activity = hadRecentActivity()
-	log.debug "$trace: thermo = $thermoState, activity = $activity"
-    thermoState && activity ? outlets.on() : outlets.off()
+	log.debug "$trace: mode = $thermoMode, state = $thermoState, activity = $activity"
+    if (thermoMode != "off" && thermoState in ["cooling", "heating"] && activity) {
+    	outlets.on()
+    } else {
+    	outlets.off()
+    }
 }
 
 private hadRecentActivity() {
