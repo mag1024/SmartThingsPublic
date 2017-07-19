@@ -16,7 +16,7 @@ definition(
     namespace: "mag",
     author: "Michael G",
     description: "Installation specific mode actions.",
-    category: "Green Living",
+    category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Meta/temp_thermo-switch@2x.png"
 )
@@ -25,6 +25,7 @@ preferences {
 	section("Away"){
 		input "awayThermos", "capability.thermostat", title: "Thermostats", multiple: true
         input(name: "awayThermoMode", type: "enum", title: "Mode", options: ["heat","cool"])
+        input "awaySwitches", "capability.switch", title: "Switches", multiple: true
 	}
 	section("Night"){
 		input "nightThermos", "capability.thermostat", title: "Thermostats", multiple: true
@@ -34,7 +35,7 @@ preferences {
 
 def installed() {
     subscribe(location, modeHandler)
-    state.appVersion = "1.0-1"
+    state.appVersion = "1.0-2"
     state.lastMode = "Home"
     state.lastChange = now()
 }
@@ -66,6 +67,11 @@ private onAway() {
 private onArrive() {
 	log.debug "onArrive()"
 	awayThermos.setThermostatMode(awayThermoMode)
+    def daytime = getSunriseAndSunset()
+    if (!timeOfDayIsBetween(daytime.sunrise, daytime.sunset, new Date(),
+    						location.timeZone)) {
+		awaySwitches.on()
+    }
 }
 
 private setThermoPoints(t, points, offset) {
