@@ -15,7 +15,7 @@ preferences {
 
 def installed() {
     subscribe(buttons, "button", buttonHandler)
-    state.appVersion = "0.2"
+    state.appVersion = "0.3"
 }
 
 def updated() {
@@ -29,11 +29,22 @@ def buttonHandler(evt) {
     log.debug "buttonEvent: $evt.name = $action ($buttonNumber)"
     if (["pushed", "held"].contains(action) == false) return
     
-    def offset = (buttonNumber > 2 ? -1 : 1) * (action == "pushed" ? 1 : 3)
-    def thermo = thermos[buttonNumber % 2]
+    if (location.mode == "Away") {
+    	location.setMode("Home") 
+    	return
+	}
     
-    log.debug "buttonEvent: applying $offset to $thermo.name"
-    thermo.setCoolingSetpoint(thermo.currentCoolingSetpoint + offset)
-    thermo.setHeatingSetpoint(thermo.currentHeatingSetpoint + offset)
+    if (buttonNumber <= 2) handleThermoEvent(thermos[buttonNumber % 2])
 }
 
+def handleThermoEvent(thermo) {
+    def new_temp = thermo.currentTemperature
+    def thermoMode = thermo.currentThermostatMode
+    def thermoState = thermo.currentThermostatOperatingState
+    if (thermoMode == "cool" && thermoState != "cooling") new_temp -= 1
+    if (thermoMode == "heat" && thermoState != "heating") new_temp += 1
+    
+    log.debug "buttonEvent: applying $new_temp to $thermo.name"
+    thermo.setCoolingSetpoint(new_temp)
+    thermo.setHeatingSetpoint(new_temp)
+}
