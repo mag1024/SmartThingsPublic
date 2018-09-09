@@ -43,49 +43,58 @@ preferences {
 
 def installed() {
 	subscribe(sensor, "temperature", temperatureHandler)
-	subscribe(thermo, "thermostat", thermoHandler)
+	subscribe(thermo, "thermostatOperatingState", thermoHandler)
     subscribe(location, modeHandler)
 	if (motion) {
-		subscribe(motion, "motion", motionHandler)
+		subscribe(motion, "motion.active", motionHandler)
 	}
-    state.appVersion = "1.1-1"
+    runEvery10Minutes(cronHandler)
+    state.appVersion = "1.3-1"
     state.lastActivity = now()
+    state.lastSwitch = false
 }
 
 def updated() {
+	unschedule()
 	unsubscribe()
 	installed()
 }
 
 def temperatureHandler(evt) {
 	thermo.setTemperature(evt.doubleValue)
-	evaluate("temp")
+	enact('temp')
 }
 
 def thermoHandler(evt) {
-	evaluate("thermo:" + evt.value)
+	enact('thermo')
 }
 
 def motionHandler(evt) {
 	if (evt.value == "active") state.lastActivity = now()
-    evaluate("motion")
+    enact('motion')
 }
 
 def modeHandler(evt) {
     if (evt.value == "Home") state.lastActivity = now()
-    evaluate("mode")
+    enact('mode')
 }
 
-private evaluate(trace) {
+def cronHandler() {
+    enact('cron')
+}
+
+private enact(String trace) {
 	def thermoState = thermo.currentThermostatOperatingState
 	def thermoMode = thermo.currentThermostatMode
+    
+    if (outlets.currentSwitch == "on" && !state.lastSwitch) state.lastActivity = now()
+    
     def activity = hadRecentActivity()
-	log.debug "$trace: mode = $thermoMode, state = $thermoState, activity = $activity"
-    if (thermoMode != "off" && thermoState in ["cooling", "heating"] && activity) {
-    	outlets.on()
-    } else {
-    	outlets.off()
-    }
+    def onoff = thermoMode != "off" && thermoState in ["cooling", "heating"] && activity;
+	log.debug "[$trace]: mode = $thermoMode, state = $thermoState, " +
+    		  "activity = $activity -> $onoff"
+    state.lastSwitch = onoff
+    onoff ? outlets.on() : outlets.off()
 }
 
 private hadRecentActivity() {
